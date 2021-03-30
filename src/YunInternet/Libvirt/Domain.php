@@ -7,12 +7,9 @@
 
 namespace YunInternet\Libvirt;
 
-use YunInternet\Libvirt\Configuration\Domain\Device\Disk;
-use YunInternet\Libvirt\Configuration\Domain\Device\InterfaceDevice;
 use YunInternet\Libvirt\Constants\Domain\VirDomainXMLFlags;
 use YunInternet\Libvirt\Exception\DomainException;
 use YunInternet\Libvirt\Exception\ErrorCode;
-use YunInternet\Libvirt\XMLImplement\SimpleXMLImplement;
 
 /**
  * Class Domain
@@ -26,7 +23,7 @@ use YunInternet\Libvirt\XMLImplement\SimpleXMLImplement;
  * @method int libvirt_domain_is_active() Return 1 on domain active, otherwise 0
  * @method bool libvirt_domain_undefine()
  * @method bool libvirt_domain_undefine_flags($flags = 0)
- * @method bool libvirt_domain_update_device(string $xml, int $flags) $flags [int]:    Flags to update the device (VIR_DOMAIN_DEVICE_MODIFY_CURRENT, VIR_DOMAIN_DEVICE_MODIFY_LIVE, VIR_DOMAIN_DEVICE_MODIFY_CONFIG, VIR_DOMAIN_DEVICE_MODIFY_FORCE)
+ * @method bool libvirt_domain_update_device(string $xml, int $flags = 0) $flags [int]:	Flags to update the device (VIR_DOMAIN_DEVICE_MODIFY_CURRENT, VIR_DOMAIN_DEVICE_MODIFY_LIVE, VIR_DOMAIN_DEVICE_MODIFY_CONFIG, VIR_DOMAIN_DEVICE_MODIFY_FORCE)
  * @method string|false libvirt_domain_qemu_agent_command(string $command, int $timeout = -1, int $flags = 0) $timeout for waiting (-2 block, -1 default, 0 no wait, >0 wait specific time
  * @method bool libvirt_domain_attach_device(string $xml, int $flags = VIR_DOMAIN_AFFECT_LIVE)
  * @method bool libvirt_domain_detach_device(string $xml, int $flags = VIR_DOMAIN_AFFECT_LIVE)
@@ -153,151 +150,14 @@ class Domain extends Libvirt
         // Set password
         $vncGraphic["passwd"] = $password;
 
-        return $this->libvirt_domain_update_device($vncGraphic->asXML(), $this->getCommonFlags());
-    }
-
-    /**
-     * @param callable|null $filter
-     * @param bool $inactive
-     * @return Disk[]
-     * @throws DomainException
-     */
-    public function getDiskCollection($filter = null, $inactive = false): array
-    {
-        return $this->getConfigurationBuilder($inactive)->devices()->getDiskCollection($filter);
-    }
-
-    /**
-     * @param string $device
-     * @return Disk[]
-     */
-    public function getDiskCollectionByDevice(string $device)
-    {
-        return $this->getConfigurationBuilder(false)->device()->getDiskCollectionByDevice($device);
-    }
-
-    /**
-     * @param string $targetDev
-     * @return Disk|null
-     * @throws DomainException
-     */
-    public function getDiskByTargetDev(string $targetDev)
-    {
-        return $this->getConfigurationBuilder(false)->device()->getDiskByTargetDev($targetDev);
-    }
-
-    /**
-     * @param string $type
-     * @param string $device
-     * @param callable $builder
-     * @param null|int $flags
-     */
-    public function attachDisk($type, $device, $builder, $flags = null)
-    {
-        $disk = new Disk($type, $device);
-        $builder($disk);
-        $this->libvirt_domain_attach_device($disk->getXML(), $this->returnCommonFlagsOnNull($flags));
-    }
-
-    /**
-     * @param string $targetDev
-     * @param null|int $flags
-     */
-    public function detachDiskByTargetDev($targetDev, $flags = null)
-    {
-        $disk = $this->getDiskByTargetDev($targetDev);
-        $this->libvirt_domain_detach_device($disk->getXML(), $this->returnCommonFlagsOnNull($flags));
-    }
-
-    /**
-     * @param string $targetDev
-     * @param callable|string|null $source
-     * @param null|int $flags
-     */
-    public function changeMedia($targetDev, $source = null, $flags = null)
-    {
-        $disk = $this->getDiskByTargetDev($targetDev);
-        if (is_string($source)) {
-            $disk->fileSource($source);
-        } else if (is_null($source)) {
-            $disk->removeChildByName("source");
-        } else if (is_callable($source)) {
-            $source($disk);
-        } else {
-            throw new DomainException("invalid parameter source", ErrorCode::INVALID_PARAMETER);
-        }
-
-        $flags = $this->returnCommonFlagsOnNull($flags);
-        $this->libvirt_domain_update_device($disk->getXML(), $flags);
-    }
-
-    /**
-     * @param null|callable $filter
-     * @param bool $inactive
-     * @return InterfaceDevice[]
-     */
-    public function getInterfaceCollection($filter = null, $inactive = false): array
-    {
-        return $this->getConfigurationBuilder($inactive)->device()->getInterfaceCollection();
-    }
-
-    /**
-     * @param string $macAddress
-     * @return InterfaceDevice
-     * @throws DomainException
-     */
-    public function getInterfaceByMacAddress(string $macAddress): InterfaceDevice
-    {
-        return $this->getConfigurationBuilder(false)->device()->getInterfaceByMacAddress($macAddress);
-    }
-
-    /**
-     * @param $macAddress
-     * @param $model
-     * @throws DomainException
-     */
-    public function setInterfaceModel($macAddress, $model)
-    {
-        $interface = $this->getInterfaceByMacAddress($macAddress);
-        $interface->setModel($model);
-        $this->libvirt_domain_update_device($interface->getXML(), VIR_DOMAIN_DEVICE_MODIFY_CONFIG);
-    }
-
-    /**
-     * @param string $macAddress
-     * @param callable $setter
-     * @throws DomainException
-     */
-    public function setInterfaceBandwidth($macAddress, $setter)
-    {
-        $interface = $this->getInterfaceByMacAddress($macAddress);
-        $setter($interface->bandwidth());
-        $this->libvirt_domain_update_device($interface->getXML(), $this->getCommonFlags());
-    }
-
-    /**
-     * @param string $type
-     * @param string $model
-     * @param null|int $flags
-     */
-    public function addController($type, $model, $flags = null)
-    {
-        $controller = "<controller type='". $type ."' model='". $model ."'/>";
-        $flags = $this->returnCommonFlagsOnNull($flags);
-        // $flags = VIR_DOMAIN_DEVICE_MODIFY_LIVE | VIR_DOMAIN_DEVICE_MODIFY_CONFIG: internal error: Cannot parse controller index -1
-        if ($flags & VIR_DOMAIN_DEVICE_MODIFY_LIVE) {
-            $this->libvirt_domain_attach_device($controller, VIR_DOMAIN_DEVICE_MODIFY_LIVE);
-        }
-        if ($flags & VIR_DOMAIN_DEVICE_MODIFY_CONFIG) {
-            $this->libvirt_domain_attach_device($controller, VIR_DOMAIN_DEVICE_MODIFY_CONFIG);
-        }
+        return $this->libvirt_domain_update_device($vncGraphic->asXML(), $this->returnLiveTagOnInstanceRunning() | VIR_DOMAIN_DEVICE_MODIFY_CONFIG);
     }
 
 
     /**
      * @return GuestAgent
      */
-    public function getGuestAgent(): GuestAgent
+    public function getGuestAgent() : GuestAgent
     {
         if (is_null($this->guestAgent)) {
             $this->guestAgent = new GuestAgent($this);
@@ -340,15 +200,6 @@ class Domain extends Libvirt
     }
 
     /**
-     * @param bool $inactive Based on inactive XML
-     * @return Configuration\Domain
-     */
-    public function getConfigurationBuilder($inactive = true): \YunInternet\Libvirt\Configuration\Domain
-    {
-        return self::createConfigurationWithXML(\YunInternet\Libvirt\Configuration\Domain::class, $this->domainSimpleXMLElement($inactive ? VirDomainXMLFlags::VIR_DOMAIN_XML_INACTIVE : 0));
-    }
-
-    /**
      * @return mixed
      */
     public function getDomainResource()
@@ -362,11 +213,6 @@ class Domain extends Libvirt
     public function getConnection(): Connection
     {
         return $this->connection;
-    }
-
-    public function getCommonFlags(): int
-    {
-        return $this->returnLiveTagOnInstanceRunning() | VIR_DOMAIN_DEVICE_MODIFY_CONFIG;
     }
 
     protected function getResources($functionName)
@@ -396,34 +242,12 @@ class Domain extends Libvirt
         return $vncGraphic;
     }
 
-    private static function add2CollectionBasedOnFilterResult($filterResult, &$collection, $value)
+    /**
+     * @return Configuration\Domain
+     */
+    public function getDomain()
     {
-        if ($filterResult === true) {
-            $collection[] = $value;
-        } else if (is_string($filterResult) || is_integer($filterResult)) {
-            $collection[$filterResult] = $value;
-        }
+        return new Configuration\Domain($this->libvirt_domain_get_xml_desc(''));
     }
 
-    /**
-     * @param null|int $flags
-     * @return int
-     */
-    private function returnCommonFlagsOnNull($flags): int
-    {
-        if (is_null($flags)) {
-            return $this->getCommonFlags();
-        }
-        return $flags;
-    }
-
-    /**
-     * @param $configurationClass
-     * @param \SimpleXMLElement $simpleXMLElement
-     * @return SimpleXMLImplement
-     */
-    private static function createConfigurationWithXML($configurationClass, \SimpleXMLElement $simpleXMLElement): SimpleXMLImplement
-    {
-        return $configurationClass::createFromSimpleXMLElement($simpleXMLElement);
-    }
 }
